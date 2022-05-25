@@ -3,10 +3,12 @@ source("code/make_data.r") # make data and load packages
 
 # load posteriors 
 prop_posts <- readRDS("posteriors/prop_posts.rds")
+prop_posts_number <- readRDS("posteriors/prop_posts_number.rds") %>% 
+  mutate(units = "abundance") %>% 
+  bind_rows(prop_posts %>% mutate(units = "mg dry mass"))
 
 # data to plot
 prop_data <- readRDS(file = "data/prop_data.rds")
-
 
 # Plot Species Means --------------------------------------------------------------
 
@@ -29,6 +31,30 @@ fish_species_averages <- prop_posts %>%
 saveRDS(fish_species_averages, file = "plots/fish_species_averages.rds")
 ggsave(fish_species_averages, file = "plots/fish_species_averages.jpg", dpi = 500, width = 6.5, height = 8.5)
 ggsave(fish_species_averages, file = "plots/Fig2.eps", dpi = 600, width = 6.5, height = 8.5)
+
+# compare abundance vs biomass
+fish_species_averages_compare <- prop_posts_number %>% 
+  filter(!grepl("chironomids only", name2)) %>% 
+  ggplot(aes(x = reorder(genus_species, -median), y = value)) + 
+  geom_boxplot(aes(group = interaction(fish_species, name2, units), fill = units), outlier.shape = NA) +
+  scale_fill_grey(end = 1, start = 0.3) +
+  facet_wrap(~name2, ncol = 1) +
+  # guides(fill = "none") +
+  theme_default() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.4),
+        strip.text.x = element_text(hjust = -0.01),
+        legend.title = element_blank()) + 
+  labs(x = "Fish Species or Family",
+       y = "Proportion of diet") +
+  # geom_jitter(data = prop_data,
+  #             width = 0.1, height = 0, size = 0.4,
+  #             shape = 21) +
+  NULL
+
+saveRDS(fish_species_averages_compare, file = "plots/fish_species_averages_compare.rds")
+ggsave(fish_species_averages_compare, file = "plots/fish_species_averages_compare.jpg", dpi = 500, width = 6.5, height = 7.5)
+ggsave(fish_species_averages_compare, file = "plots/FigSx_compare.eps", dpi = 600, width = 6.5, height = 7.5)
+
 
 # Summarize ---------------------------------------------------------------
 library(tidybayes)
@@ -58,3 +84,17 @@ table_summary <- prop_posts %>%
   select(fish_species, prop_noncons, prop_noncons_aquatic, prop_terrestrial, prop_chiro_pup_adult)
   
 write_csv(table_summary, file = "tables/table_summary.csv")  
+
+# numeric
+prop_posts_number %>% 
+  filter(units == "abundance") %>% 
+  filter(fish_species == "Average") %>% 
+  group_by(name) %>% 
+  median_qi(value)
+
+prop_posts_number %>% 
+  filter(units == "abundance") %>% 
+  filter(fish_species != "Average") %>% 
+  group_by(name, fish_species) %>% 
+  median_qi(value) %>% 
+  print(n = Inf)

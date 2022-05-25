@@ -5,12 +5,24 @@ guild_diet_multi_drymass <- readRDS("data/guild_diet_multi_drymass.rds")
 chiros_only <- readRDS("data/chiros_only.rds")
 # load prior data from 2017 REU experiment (Seidel and Wesner, unpublished)
 diet_mgdm_2017 <- read_csv("data/prior_diets.csv") 
+# data to analyze
+prey_terr_noncons <- guild_diet_multi_drymass %>% 
+  group_by(prey_feeding, prey_ecosystem, site, date, fish_species,
+           sample_id) %>% 
+  summarize(sample_mg_dm = sum(sample_mg_dm, na.rm = T),
+            sample_number = sum(number, na.rm = T)) %>% 
+  arrange(sample_mg_dm)
 
-# Fit models
+
+
+# Fit biomass models
 
 # all taxa ----------------------------------------------------------------
 
 # prior predictive 
+# make short dataset for prior prediction
+short_prey_terr <- prey_terr_noncons %>% group_by(prey_ecosystem, prey_feeding, site, date, fish_species) %>% 
+  slice(n = 10)
 brm_prior <- brm(bf(sample_mg_dm ~ prey_feeding*prey_ecosystem + (1 | site) + (1 | date) + 
                     (1 + prey_feeding*prey_ecosystem | fish_species), 
                   hu ~ 1 + (1 + prey_feeding*prey_ecosystem|fish_species)),
@@ -81,7 +93,7 @@ prior_checks <- all_prior_preds %>%
 ggsave(prior_checks, file = "plots/prior_checks.jpg", dpi = 500,
        width = 8.5, height = 4.5)
 
-# fit models --------------------------------------------------------
+# fit model 
 
 # load model
 brm_all <- readRDS(file = "models/species_models/brm_all.rds")
@@ -105,7 +117,20 @@ brm_all <- update(brm_all, chains = 4, iter = 2000, cores = 4)
 
 saveRDS(brm_all, file = "models/species_models/brm_all.rds")
 
-
+# fit abundance model
+brm_all_number <- brm(bf(sample_number ~ prey_feeding*prey_ecosystem + (1 | site) + (1 | date) + 
+                    (1 + prey_feeding*prey_ecosystem | fish_species), 
+                  hu ~ 1 + (1 + prey_feeding*prey_ecosystem|fish_species)),
+               data = prey_terr_noncons,
+               family = hurdle_gamma(link = "log"),
+               prior = c(prior(normal(0, 5), class = "Intercept"),
+                         prior(normal(-1, 1), class = "b"),
+                         prior(gamma(1, 0.1), class = "shape"),
+                         prior(exponential(4), class = "sd")),
+               cores = 4,
+               file_refit = "on_change",
+               file = "models/species_models/brm_all_number.rds",
+               chains = 1, iter = 1000)
 
 # chironomid stages -------------------------------------------------------
 
@@ -122,7 +147,7 @@ brm_chiro_stages <- brm(bf(sample_mg_dm ~ prey_stage + (1 + prey_stage|fish_spec
                         file_refit = "on_change")
 
 
-# Check models ------------------------------------------------------------
+# check models ------------------------------------------------------------
 
 pp_all <- pp_check(brm_all, type = "hist") + 
   labs(subtitle = "All Prey") +
